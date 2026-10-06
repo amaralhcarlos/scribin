@@ -28,6 +28,12 @@ go.work.sum
 # env file
 .env
 
+# Local whisper.cpp clone/build (set up by scripts/setup.sh)
+/third_party/
+
+# Downloaded ggml models (set up by scripts/setup.sh)
+/models/
+
 # Editor/IDE
 # .idea/
 # .vscode/
