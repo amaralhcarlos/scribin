@@ -81,3 +81,21 @@ O teste de integração de ponta a ponta em `cmd/scribin` usa o vídeo curto em
 `testdata/sample.mp4` e só roda se `ffmpeg`, o binário `whisper-cli` e um
 modelo ggml já estiverem disponíveis (ou seja, depois de rodar
 `scripts/setup.sh`); caso contrário, ele é pulado automaticamente.
+
+## Releases
+
+Gerar uma nova versão é automático: basta mergear um PR de `develop` pra
+`main` usando commits no padrão [Conventional Commits](https://www.conventionalcommits.org/)
+(`feat:`, `fix:`, `feat!:`/`fix!:` ou `BREAKING CHANGE` no corpo do commit
+para breaking changes etc.). O workflow em `.github/workflows/release.yml`
+cuida do resto:
+
+1. Analisa os commits desde a última tag e decide a próxima versão semver
+   (`feat:` → minor, `fix:` → patch, breaking change → major), criando e
+   empurrando a tag automaticamente. Se nenhum commit relevante for
+   encontrado desde a última tag, nenhuma tag nova é criada.
+2. Compila `cmd/scribin` pra Linux, macOS e Windows (amd64 e arm64) com o
+   [GoReleaser](https://goreleaser.com/) (configuração em `.goreleaser.yaml`)
+   e publica os binários como anexos de uma GitHub Release na tag recém-criada.
+
+Não é preciso rodar nada manualmente além do merge pra `main`.

@@ -34,6 +34,9 @@ go.work.sum
 # Downloaded ggml models (set up by scripts/setup.sh)
 /models/
 
+# GoReleaser output
+/dist/
+
 # Editor/IDE
 # .idea/
 # .vscode/
