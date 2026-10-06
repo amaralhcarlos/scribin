@@ -1,132 +1,138 @@
 # scribin
 
-Utilitário em Go, 100% local, que varre uma pasta de vídeos já gravados,
-extrai o áudio de cada um (via ffmpeg) e gera a transcrição (texto e SRT)
-usando o [whisper.cpp](https://github.com/ggerganov/whisper.cpp) como motor,
-sem nenhuma dependência de API em nuvem.
+A 100% local Go utility that scans a folder of already-recorded videos,
+extracts the audio from each one (via ffmpeg), and generates a transcript
+(plain text and SRT) using [whisper.cpp](https://github.com/ggerganov/whisper.cpp)
+as the engine, with no cloud API dependency whatsoever.
 
-## Pré-requisitos
+## Prerequisites
 
-- Go 1.22 ou mais recente
-- [ffmpeg](https://ffmpeg.org/) no PATH
-- cmake e um compilador C/C++ (gcc ou clang), para compilar o whisper.cpp
+- Go 1.22 or newer
+- [ffmpeg](https://ffmpeg.org/) on the PATH
+- cmake and a C/C++ compiler (gcc or clang), to build whisper.cpp
 - git
 
-Com os pré-requisitos instalados, rode o script de setup a partir da raiz do
-projeto para clonar e compilar o whisper.cpp e baixar o modelo `small`:
+With the prerequisites installed, run the setup script from the project root
+to clone and build whisper.cpp and download the `small` model:
 
 ```sh
 scripts/setup.sh
 ```
 
-O script é idempotente (pode ser rodado de novo sem duplicar o clone ou o
-download) e, ao final, roda uma transcrição de teste pra confirmar que a
-cadeia ffmpeg + whisper.cpp está funcionando. O clone do whisper.cpp fica em
-`third_party/whisper.cpp/` e os modelos baixados em `models/` — ambos fora
-do controle de versão.
+The script is idempotent (safe to run again without duplicating the clone or
+the download) and, at the end, runs a test transcription to confirm the
+ffmpeg + whisper.cpp chain is working. The whisper.cpp clone lives in
+`third_party/whisper.cpp/` and downloaded models in `models/` — both outside
+version control.
 
-> Nota: em alguns ambientes Windows com o recurso **Smart App Control**
-> ativado, o toolchain de compilação (MinGW/GCC) pode ser bloqueado. Nesse
-> caso, rode o script dentro do WSL (Windows Subsystem for Linux).
+> Note: on some Windows environments with **Smart App Control** enabled, the
+> build toolchain (MinGW/GCC, and even the Go assembler) can be silently
+> blocked. In that case, run the script inside WSL (Windows Subsystem for
+> Linux) instead.
 
-## Compilando
+## Building
 
 ```sh
 go build -o scribin ./cmd/scribin
 ```
 
-## Uso
+## Usage
 
 ```sh
 ./scribin \
   --input-dir ./videos \
-  --output-dir ./transcricoes \
+  --output-dir ./transcripts \
   --model third_party/whisper.cpp/models/ggml-small.bin \
   --whisper-bin third_party/whisper.cpp/build/bin/whisper-cli \
-  --lang pt
+  --lang en
 ```
 
-Para cada vídeo encontrado recursivamente em `--input-dir` (extensões `.mp4`,
-`.mkv`, `.mov`, `.avi`), o comando extrai o áudio, transcreve e grava
-`<nome-do-video>.txt` (texto corrido) e `<nome-do-video>.srt` (com
-timestamps) em `--output-dir`. Vídeos que já têm um `.txt` correspondente em
-`--output-dir` são pulados, então rodar o comando de novo sobre a mesma
-pasta só processa o que for novo.
+For each video found recursively under `--input-dir` (extensions `.mp4`,
+`.mkv`, `.mov`, `.avi`), the command extracts the audio, transcribes it, and
+writes `<video-name>.txt` (plain text) and `<video-name>.srt` (with
+timestamps) to `--output-dir`. Videos that already have a matching `.txt` in
+`--output-dir` are skipped, so running the command again over the same
+folder only processes what's new.
 
-### Flags disponíveis
+### Available flags
 
-| Flag                   | Obrigatória | Default                  | Descrição                                                                 |
-|-------------------------|:-----------:|---------------------------|----------------------------------------------------------------------------|
-| `--input-dir`            | sim         | —                          | Diretório com os vídeos a transcrever (varredura recursiva)               |
-| `--output-dir`           | sim         | —                          | Diretório onde `.txt`/`.srt` são escritos                                  |
-| `--model`                | sim         | —                          | Caminho do modelo ggml (ex: `ggml-small.bin`)                              |
-| `--whisper-bin`          | sim         | —                          | Caminho do binário `whisper-cli`                                           |
-| `--lang`                 | não         | `pt`                       | Idioma falado nos vídeos (ex: `pt`, `en`, ou `auto` para auto-detecção)   |
-| `--workers`              | não         | metade das CPUs disponíveis| Quantos vídeos processar em paralelo                                       |
-| `--per-video-timeout`    | não         | `30m`                      | Timeout individual por vídeo (extração + transcrição); evita que um vídeo corrompido trave o lote inteiro |
-| `--dry-run`              | não         | `false`                    | Só lista os vídeos que seriam processados, sem chamar ffmpeg/whisper      |
-| `--tui`                  | não         | `false`                    | Mostra uma interface interativa no terminal em vez de logs simples       |
+| Flag                   | Required |         Default        | Description                                                                 |
+|-------------------------|:--------:|--------------------------|------------------------------------------------------------------------------|
+| `--input-dir`            | yes      | —                        | Directory with the videos to transcribe (recursive scan)                   |
+| `--output-dir`           | yes      | —                        | Directory where `.txt`/`.srt` files are written                             |
+| `--model`                | yes      | —                        | Path to the ggml model (e.g. `ggml-small.bin`)                              |
+| `--whisper-bin`          | yes      | —                        | Path to the `whisper-cli` binary                                            |
+| `--lang`                 | no       | `pt`                     | Spoken language in the videos (e.g. `pt`, `en`, or `auto` for detection)    |
+| `--workers`              | no       | half the available CPUs | How many videos to process in parallel                                      |
+| `--per-video-timeout`    | no       | `30m`                    | Per-video timeout (extraction + transcription); prevents a corrupted video from hanging the whole batch |
+| `--dry-run`              | no       | `false`                  | Only lists the videos that would be processed, without calling ffmpeg/whisper |
+| `--tui`                  | no       | `false`                  | Shows an interactive terminal UI instead of plain logs                      |
 
-O comando continua processando os demais vídeos mesmo se um falhar
-individualmente (o erro é logado e o lote segue), mas termina com código de
-saída diferente de zero se houve qualquer falha — útil para detectar
-problemas em scripts/CI.
+The command keeps processing the remaining videos even if one fails
+individually (the error is logged and the batch continues), but exits with a
+non-zero status code if any failure occurred — useful for detecting problems
+in scripts/CI.
 
-### Interface no terminal (`--tui`)
+### Terminal UI (`--tui`)
 
-Com `--tui`, o comando mostra a lista de vídeos encontrados com o status de
-cada um (pendente, extraindo áudio, transcrevendo, concluído, erro), uma
-barra de progresso por vídeo em processamento, uma barra de progresso geral
-e um resumo final (sucessos, falhas, tempo total) quando tudo terminar —
-pressione qualquer tecla para sair depois do resumo, ou `q`/`Ctrl+C` a
-qualquer momento. Se a saída não for um terminal interativo (ex: rodando
-dentro de um script ou com stdout redirecionado), `--tui` é ignorado e o
-comando cai de volta pro modo de logs simples automaticamente.
+With `--tui`, the command shows the list of videos found along with each
+one's status (pending, extracting audio, transcribing, done, skipped,
+error), a per-video progress bar while it's being processed, an overall
+progress bar, and a final summary (successes, failures, total time) once
+everything finishes — press any key to exit after the summary, or `q`/`Ctrl+C`
+at any time. If stdout isn't an interactive terminal (e.g. running inside a
+script or with stdout redirected), `--tui` is ignored and the command falls
+back to plain log output automatically.
 
-### Executando via WSL (Windows)
+### Running via WSL (Windows)
 
-Se o Smart App Control bloquear o build nativo no Windows (nota acima), compile
-o `scribin` dentro do WSL (ex: `go build -o scribin_linux ./cmd/scribin`) e rode
-por lá — caminhos do Windows ficam acessíveis em `/mnt/c/...`:
+If Smart App Control blocks the native build on Windows (see note above),
+build `scribin` inside WSL instead (e.g. `go build -o scribin_linux ./cmd/scribin`)
+and run it from there — Windows paths are reachable under `/mnt/c/...`:
 
 ```sh
 wsl -d Ubuntu -- bash -lc '
 cd /mnt/c/DEV/scribin && \
 ./scribin_linux \
-  --input-dir "/mnt/c/Vídeos" \
-  --output-dir "/mnt/c/Vídeos/transcricoes" \
+  --input-dir "/mnt/c/Videos" \
+  --output-dir "/mnt/c/Videos/transcripts" \
   --model models/ggml-small.bin \
   --whisper-bin third_party/whisper.cpp/build/bin/whisper-cli \
-  --lang pt \
+  --lang en \
   --tui
 '
 ```
 
-## Testes
+## Tests
 
 ```sh
 go test ./...
 ```
 
-O teste de integração de ponta a ponta em `cmd/scribin` usa o vídeo curto em
-`testdata/sample.mp4` e só roda se `ffmpeg`, o binário `whisper-cli` e um
-modelo ggml já estiverem disponíveis (ou seja, depois de rodar
-`scripts/setup.sh`); caso contrário, ele é pulado automaticamente.
+The end-to-end integration test in `cmd/scribin` uses the short video at
+`testdata/sample.mp4` and only runs if `ffmpeg`, the `whisper-cli` binary, and
+a ggml model are already available (i.e. after running `scripts/setup.sh`);
+otherwise it's skipped automatically.
 
 ## Releases
 
-Gerar uma nova versão é automático: basta mergear um PR de `develop` pra
-`main` usando commits no padrão [Conventional Commits](https://www.conventionalcommits.org/)
-(`feat:`, `fix:`, `feat!:`/`fix!:` ou `BREAKING CHANGE` no corpo do commit
-para breaking changes etc.). O workflow em `.github/workflows/release.yml`
-cuida do resto:
+Cutting a new version is automatic: just merge a PR from `develop` into
+`main` using [Conventional Commits](https://www.conventionalcommits.org/)
+(`feat:`, `fix:`, `feat!:`/`fix!:` or `BREAKING CHANGE` in the commit body for
+breaking changes, etc.). The workflow in `.github/workflows/release.yml`
+takes care of the rest:
 
-1. Analisa os commits desde a última tag e decide a próxima versão semver
-   (`feat:` → minor, `fix:` → patch, breaking change → major), criando e
-   empurrando a tag automaticamente. Se nenhum commit relevante for
-   encontrado desde a última tag, nenhuma tag nova é criada.
-2. Compila `cmd/scribin` pra Linux, macOS e Windows (amd64 e arm64) com o
-   [GoReleaser](https://goreleaser.com/) (configuração em `.goreleaser.yaml`)
-   e publica os binários como anexos de uma GitHub Release na tag recém-criada.
+1. Analyzes the commits since the last tag and decides the next semver
+   version (`feat:` → minor, `fix:` → patch, breaking change → major),
+   creating and pushing the tag automatically. If no relevant commit is
+   found since the last tag, no new tag is created.
+2. Builds `cmd/scribin` for Linux, macOS, and Windows (amd64 and arm64) with
+   [GoReleaser](https://goreleaser.com/) (configured in `.goreleaser.yaml`)
+   and publishes the binaries as attachments on a GitHub Release at the
+   newly created tag.
 
-Não é preciso rodar nada manualmente além do merge pra `main`.
+Nothing needs to be run manually beyond the merge into `main`.
+
+## License
+
+Released under the [MIT License](LICENSE).
