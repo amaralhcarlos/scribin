@@ -37,6 +37,40 @@ type Config struct {
 	Workers         int
 	PerVideoTimeout time.Duration // 0 means no per-video timeout
 	DryRun          bool          // when true, only list pending videos; no ffmpeg/whisper calls
+
+	// Progress, when non-nil, receives a ProgressEvent for every stage
+	// transition of every video. Run closes it once processing is done, so
+	// a consumer (e.g. a TUI) can range over it. Batch never imports a UI
+	// package; it only publishes events here.
+	Progress chan<- ProgressEvent
+}
+
+// Stage identifies where a video currently is in the pipeline.
+type Stage string
+
+const (
+	StagePending      Stage = "pending"
+	StageExtracting   Stage = "extracting"
+	StageTranscribing Stage = "transcribing"
+	StageDone         Stage = "done"
+	StageSkipped      Stage = "skipped" // already had a .txt before this run started
+	StageError        Stage = "error"
+)
+
+// ProgressEvent reports a stage transition for a single video.
+type ProgressEvent struct {
+	VideoName string
+	Stage     Stage
+	Err       error // set only when Stage is StageError
+}
+
+// emit sends an event on progress if it's non-nil; it's a no-op otherwise,
+// so callers don't need to guard every call site.
+func emit(progress chan<- ProgressEvent, videoName string, stage Stage, err error) {
+	if progress == nil {
+		return
+	}
+	progress <- ProgressEvent{VideoName: videoName, Stage: stage, Err: err}
 }
 
 // Summary reports the outcome of a batch run.
@@ -83,19 +117,27 @@ func baseName(videoPath string) string {
 }
 
 // ProcessVideo extracts the audio of videoPath, transcribes it, and writes
-// the resulting <base>.txt and <base>.srt files into outputDir.
-func ProcessVideo(ctx context.Context, videoPath, outputDir string, whisperOpts transcribe.Options) error {
+// the resulting <base>.txt and <base>.srt files into outputDir. When
+// progress is non-nil, it receives a StageExtracting and StageTranscribing
+// event as the video moves through the pipeline (the caller is responsible
+// for the terminal StageDone/StageError event, since it also tracks timing
+// and summary counters).
+func ProcessVideo(ctx context.Context, videoPath, outputDir string, whisperOpts transcribe.Options, progress chan<- ProgressEvent) error {
+	name := filepath.Base(videoPath)
+
 	audioDir, err := os.MkdirTemp("", "scribin-audio-*")
 	if err != nil {
 		return fmt.Errorf("failed to create temp audio directory: %w", err)
 	}
 	defer os.RemoveAll(audioDir)
 
+	emit(progress, name, StageExtracting, nil)
 	audioPath, err := extract.ExtractAudio(ctx, videoPath, audioDir)
 	if err != nil {
 		return fmt.Errorf("extract audio: %w", err)
 	}
 
+	emit(progress, name, StageTranscribing, nil)
 	result, err := transcribe.Transcribe(ctx, audioPath, whisperOpts)
 	if err != nil {
 		return fmt.Errorf("transcribe: %w", err)
@@ -148,6 +190,10 @@ func formatSRTTimestamp(seconds float64) string {
 // pool bounded by cfg.Workers, continuing past individual failures and
 // reporting a final Summary.
 func Run(ctx context.Context, cfg Config) (Summary, error) {
+	if cfg.Progress != nil {
+		defer close(cfg.Progress)
+	}
+
 	videos, err := FindVideos(cfg.InputDir)
 	if err != nil {
 		return Summary{}, err
@@ -158,9 +204,11 @@ func Run(ctx context.Context, cfg Config) (Summary, error) {
 	for _, video := range videos {
 		if alreadyProcessed(cfg.OutputDir, video) {
 			skipped++
+			emit(cfg.Progress, filepath.Base(video), StageSkipped, nil)
 			continue
 		}
 		pending = append(pending, video)
+		emit(cfg.Progress, filepath.Base(video), StagePending, nil)
 	}
 
 	total := len(pending)
@@ -205,7 +253,7 @@ func Run(ctx context.Context, cfg Config) (Summary, error) {
 			}
 
 			start := time.Now()
-			err := ProcessVideo(videoCtx, videoPath, cfg.OutputDir, whisperOpts)
+			err := ProcessVideo(videoCtx, videoPath, cfg.OutputDir, whisperOpts, cfg.Progress)
 
 			mu.Lock()
 			completed++
@@ -217,10 +265,13 @@ func Run(ctx context.Context, cfg Config) (Summary, error) {
 			}
 			mu.Unlock()
 
+			name := filepath.Base(videoPath)
 			if err != nil {
-				log.Printf("[%d/%d] %s failed: %v", idx, total, filepath.Base(videoPath), err)
+				emit(cfg.Progress, name, StageError, err)
+				log.Printf("[%d/%d] %s failed: %v", idx, total, name, err)
 			} else {
-				log.Printf("[%d/%d] %s transcribed in %s", idx, total, filepath.Base(videoPath), time.Since(start))
+				emit(cfg.Progress, name, StageDone, nil)
+				log.Printf("[%d/%d] %s transcribed in %s", idx, total, name, time.Since(start))
 			}
 		}(video)
 	}

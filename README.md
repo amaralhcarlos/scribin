@@ -65,11 +65,23 @@ pasta só processa o que for novo.
 | `--workers`              | não         | metade das CPUs disponíveis| Quantos vídeos processar em paralelo                                       |
 | `--per-video-timeout`    | não         | `30m`                      | Timeout individual por vídeo (extração + transcrição); evita que um vídeo corrompido trave o lote inteiro |
 | `--dry-run`              | não         | `false`                    | Só lista os vídeos que seriam processados, sem chamar ffmpeg/whisper      |
+| `--tui`                  | não         | `false`                    | Mostra uma interface interativa no terminal em vez de logs simples       |
 
 O comando continua processando os demais vídeos mesmo se um falhar
 individualmente (o erro é logado e o lote segue), mas termina com código de
 saída diferente de zero se houve qualquer falha — útil para detectar
 problemas em scripts/CI.
+
+### Interface no terminal (`--tui`)
+
+Com `--tui`, o comando mostra a lista de vídeos encontrados com o status de
+cada um (pendente, extraindo áudio, transcrevendo, concluído, erro), uma
+barra de progresso por vídeo em processamento, uma barra de progresso geral
+e um resumo final (sucessos, falhas, tempo total) quando tudo terminar —
+pressione qualquer tecla para sair depois do resumo, ou `q`/`Ctrl+C` a
+qualquer momento. Se a saída não for um terminal interativo (ex: rodando
+dentro de um script ou com stdout redirecionado), `--tui` é ignorado e o
+comando cai de volta pro modo de logs simples automaticamente.
 
 ## Testes
 

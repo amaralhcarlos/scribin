@@ -10,7 +10,10 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/charmbracelet/x/term"
+
 	"scribin/internal/batch"
+	"scribin/internal/tui"
 )
 
 func defaultWorkers() int {
@@ -32,6 +35,7 @@ func main() {
 	flag.IntVar(&cfg.Workers, "workers", defaultWorkers(), "number of videos to process in parallel")
 	flag.DurationVar(&cfg.PerVideoTimeout, "per-video-timeout", 30*time.Minute, "maximum time allowed to process a single video (extraction + transcription); a corrupted video won't block the rest of the batch")
 	flag.BoolVar(&cfg.DryRun, "dry-run", false, "only list videos that would be processed, without calling ffmpeg/whisper")
+	useTUI := flag.Bool("tui", false, "show an interactive terminal UI instead of plain logs")
 	flag.Parse()
 
 	if cfg.InputDir == "" || cfg.OutputDir == "" || cfg.ModelPath == "" || cfg.WhisperBin == "" {
@@ -40,7 +44,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	summary, err := batch.Run(context.Background(), cfg)
+	var summary batch.Summary
+	var err error
+
+	// The TUI needs a real, interactive terminal; fall back to plain logs
+	// otherwise (e.g. output piped to a file, or running inside CI) instead
+	// of hanging.
+	if *useTUI && term.IsTerminal(os.Stdout.Fd()) {
+		summary, err = tui.Run(context.Background(), cfg)
+	} else {
+		if *useTUI {
+			log.Println("warning: --tui requires an interactive terminal; falling back to plain logs")
+		}
+		summary, err = batch.Run(context.Background(), cfg)
+	}
 	if err != nil {
 		log.Fatalf("batch processing failed: %v", err)
 	}

@@ -79,6 +79,48 @@ func TestRun_DryRun(t *testing.T) {
 	}
 }
 
+func TestRun_ProgressEvents(t *testing.T) {
+	inputDir := t.TempDir()
+	outputDir := t.TempDir()
+	mustWriteFile(t, filepath.Join(inputDir, "done.mp4"), "x")
+	mustWriteFile(t, filepath.Join(inputDir, "new.mp4"), "x")
+	mustWriteFile(t, filepath.Join(outputDir, "done.txt"), "already transcribed")
+
+	progress := make(chan ProgressEvent, 10)
+
+	summary, err := Run(context.Background(), Config{
+		InputDir:  inputDir,
+		OutputDir: outputDir,
+		Workers:   1,
+		DryRun:    true,
+		Progress:  progress,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if summary.Skipped != 1 || summary.Total != 1 {
+		t.Fatalf("unexpected summary: %+v", summary)
+	}
+
+	var events []ProgressEvent
+	for ev := range progress { // Run must close the channel, or this hangs.
+		events = append(events, ev)
+	}
+
+	want := []ProgressEvent{
+		{VideoName: "done.mp4", Stage: StageSkipped},
+		{VideoName: "new.mp4", Stage: StagePending},
+	}
+	if len(events) != len(want) {
+		t.Fatalf("expected %d events, got %d: %+v", len(want), len(events), events)
+	}
+	for i, w := range want {
+		if events[i].VideoName != w.VideoName || events[i].Stage != w.Stage {
+			t.Errorf("event %d: got %+v, want %+v", i, events[i], w)
+		}
+	}
+}
+
 func mustWriteFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
