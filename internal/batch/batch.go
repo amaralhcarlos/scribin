@@ -29,12 +29,14 @@ var videoExtensions = map[string]bool{
 
 // Config holds everything Run needs to process a batch of videos.
 type Config struct {
-	InputDir   string
-	OutputDir  string
-	ModelPath  string
-	WhisperBin string
-	Language   string
-	Workers    int
+	InputDir        string
+	OutputDir       string
+	ModelPath       string
+	WhisperBin      string
+	Language        string
+	Workers         int
+	PerVideoTimeout time.Duration // 0 means no per-video timeout
+	DryRun          bool          // when true, only list pending videos; no ffmpeg/whisper calls
 }
 
 // Summary reports the outcome of a batch run.
@@ -164,6 +166,13 @@ func Run(ctx context.Context, cfg Config) (Summary, error) {
 	total := len(pending)
 	log.Printf("batch: found %d video(s), %d already processed, %d pending", len(videos), skipped, total)
 
+	if cfg.DryRun {
+		for _, video := range pending {
+			log.Printf("[dry-run] would process: %s", video)
+		}
+		return Summary{Total: total, Skipped: skipped}, nil
+	}
+
 	whisperOpts := transcribe.Options{
 		WhisperBinPath: cfg.WhisperBin,
 		ModelPath:      cfg.ModelPath,
@@ -188,8 +197,15 @@ func Run(ctx context.Context, cfg Config) (Summary, error) {
 			defer wg.Done()
 			defer func() { <-sem }()
 
+			videoCtx := ctx
+			if cfg.PerVideoTimeout > 0 {
+				var cancel context.CancelFunc
+				videoCtx, cancel = context.WithTimeout(ctx, cfg.PerVideoTimeout)
+				defer cancel()
+			}
+
 			start := time.Now()
-			err := ProcessVideo(ctx, videoPath, cfg.OutputDir, whisperOpts)
+			err := ProcessVideo(videoCtx, videoPath, cfg.OutputDir, whisperOpts)
 
 			mu.Lock()
 			completed++

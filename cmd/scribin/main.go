@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"time"
 
 	"scribin/internal/batch"
 )
@@ -29,6 +30,8 @@ func main() {
 	flag.StringVar(&cfg.WhisperBin, "whisper-bin", "", "path to the whisper-cli binary (required)")
 	flag.StringVar(&cfg.Language, "lang", "pt", "language spoken in the videos (e.g. pt, en, or auto)")
 	flag.IntVar(&cfg.Workers, "workers", defaultWorkers(), "number of videos to process in parallel")
+	flag.DurationVar(&cfg.PerVideoTimeout, "per-video-timeout", 30*time.Minute, "maximum time allowed to process a single video (extraction + transcription); a corrupted video won't block the rest of the batch")
+	flag.BoolVar(&cfg.DryRun, "dry-run", false, "only list videos that would be processed, without calling ffmpeg/whisper")
 	flag.Parse()
 
 	if cfg.InputDir == "" || cfg.OutputDir == "" || cfg.ModelPath == "" || cfg.WhisperBin == "" {
@@ -43,4 +46,8 @@ func main() {
 	}
 
 	log.Printf("summary: %d succeeded, %d failed, %d skipped (already processed)", summary.Succeeded, summary.Failed, summary.Skipped)
+
+	if summary.Failed > 0 {
+		os.Exit(1)
+	}
 }

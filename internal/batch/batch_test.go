@@ -1,6 +1,7 @@
 package batch
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -51,6 +52,30 @@ func TestFormatSRT(t *testing.T) {
 
 	if got != want {
 		t.Errorf("unexpected SRT output:\n got:  %q\n want: %q", got, want)
+	}
+}
+
+func TestRun_DryRun(t *testing.T) {
+	inputDir := t.TempDir()
+	outputDir := t.TempDir()
+	mustWriteFile(t, filepath.Join(inputDir, "video1.mp4"), "not a real video")
+
+	summary, err := Run(context.Background(), Config{
+		InputDir:  inputDir,
+		OutputDir: outputDir,
+		Workers:   1,
+		DryRun:    true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if summary.Total != 1 || summary.Succeeded != 0 || summary.Failed != 0 {
+		t.Fatalf("unexpected summary for dry-run: %+v", summary)
+	}
+
+	if _, err := os.Stat(filepath.Join(outputDir, "video1.txt")); err == nil {
+		t.Fatal("dry-run should not have written any output file")
 	}
 }
 
