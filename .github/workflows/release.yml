@@ -1,0 +1,53 @@
+# Tags a new semantic version from Conventional Commits and publishes
+# cross-platform scribin binaries whenever develop is merged into main.
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Tag and release
+    runs-on: ubuntu-latest
+    # Avoid looping: skip if this push's commit was itself made by the
+    # release bot (nothing in this workflow commits to main today, but this
+    # guards against that changing in the future).
+    if: github.event.head_commit.author.name != 'github-actions[bot]'
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          # Full history is needed to walk commits since the last tag.
+          fetch-depth: 0
+
+      - name: Compute next semantic version tag
+        id: tag_version
+        uses: mathieudutour/github-tag-action@v6
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          release_branches: main
+          # No tag is created when no commit since the last tag requires a bump.
+          default_bump: false
+
+      - name: Set up Go
+        if: steps.tag_version.outputs.new_tag != ''
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build and publish release binaries
+        if: steps.tag_version.outputs.new_tag != ''
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Tell GoReleaser to release the tag we just created, instead of
+          # letting it guess from `git describe`.
+          GORELEASER_CURRENT_TAG: ${{ steps.tag_version.outputs.new_tag }}
