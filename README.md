@@ -83,6 +83,25 @@ qualquer momento. Se a saída não for um terminal interativo (ex: rodando
 dentro de um script ou com stdout redirecionado), `--tui` é ignorado e o
 comando cai de volta pro modo de logs simples automaticamente.
 
+### Executando via WSL (Windows)
+
+Se o Smart App Control bloquear o build nativo no Windows (nota acima), compile
+o `scribin` dentro do WSL (ex: `go build -o scribin_linux ./cmd/scribin`) e rode
+por lá — caminhos do Windows ficam acessíveis em `/mnt/c/...`:
+
+```sh
+wsl -d Ubuntu -- bash -lc '
+cd /mnt/c/DEV/scribin && \
+./scribin_linux \
+  --input-dir "/mnt/c/Vídeos" \
+  --output-dir "/mnt/c/Vídeos/transcricoes" \
+  --model models/ggml-small.bin \
+  --whisper-bin third_party/whisper.cpp/build/bin/whisper-cli \
+  --lang pt \
+  --tui
+'
+```
+
 ## Testes
 
 ```sh
