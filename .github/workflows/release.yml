@@ -34,6 +34,13 @@ jobs:
           # No tag is created when no commit since the last tag requires a bump.
           default_bump: false
 
+      - name: Fetch the newly created tag
+        # actions/checkout ran before the tag above existed, so the local
+        # clone doesn't have it yet; GoReleaser needs the tag object present
+        # locally (pointing at the current commit) to validate GORELEASER_CURRENT_TAG.
+        if: steps.tag_version.outputs.new_tag != ''
+        run: git fetch --force --tags origin
+
       - name: Set up Go
         if: steps.tag_version.outputs.new_tag != ''
         uses: actions/setup-go@v5
